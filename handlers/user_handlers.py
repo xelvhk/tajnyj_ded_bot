@@ -3,6 +3,7 @@ from aiogram.filters import Command, CommandStart
 from aiogram.types import Message
 from keyboards.keyboards import yaded_kb
 from lexicon.lexicon_ru import LEXICON_RU
+from services.services import start_record
 
 router = Router()
 bot = Bot
@@ -10,6 +11,7 @@ bot = Bot
 # Этот хэндлер срабатывает на команду /start
 @router.message(CommandStart())
 async def process_start_command(message: Message):
+    start_record()
     await message.answer(text=LEXICON_RU['/start'],
                          reply_markup=yaded_kb)
 

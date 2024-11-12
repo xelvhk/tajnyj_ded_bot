@@ -5,7 +5,7 @@
 .vscode/
 venv/
 __pycache__/
-attendance.db
+santas.db
 data/
 node_modules/
 package.json
