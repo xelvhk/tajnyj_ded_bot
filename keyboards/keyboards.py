@@ -4,11 +4,13 @@ from lexicon.lexicon_ru import LEXICON_RU
 
 # Создаем кнопки клавиатуры
 yaded_button_1 = KeyboardButton(text=LEXICON_RU['yaded'])
-yaded_button_2 = KeyboardButton(text=LEXICON_RU['snow'])
+yaded_button_2 = KeyboardButton(text=LEXICON_RU['snowball'])
+yaded_button_3 = KeyboardButton(text=LEXICON_RU['hit'])
 
 yaded_kb = ReplyKeyboardMarkup(
     keyboard=[[yaded_button_1],
-              [yaded_button_2]
+              [yaded_button_2],
+              [yaded_button_3]
               ],
     resize_keyboard=True
 )
