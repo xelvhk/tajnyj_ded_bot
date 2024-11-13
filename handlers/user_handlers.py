@@ -23,7 +23,7 @@ async def process_start_command(message: Message):
     conn.commit()
     await message.answer(text=LEXICON_RU['/start'],
                          reply_markup=yaded_kb)
-    await message.answer(f"Здравствуй, {message.from_user.full_name}! ты участвуешь в Тайном Санте! Жди, пока подойдут остальные коллеги")
+    await message.answer(f"Здравствуй, {message.from_user.full_name}! ты участвуешь в Тайном Санте! Вот только у нас не Санта, а Дед! Дед Мороз! Жди, пока подойдут остальные коллеги")
 
 
 # Этот хэндлер срабатывает на команду /help
@@ -64,7 +64,7 @@ async def become_santa(message: Message):
         
         await message.answer(f"{message.from_user.full_name}, ты теперь тайный Санта для @{gift_for}!")
     await message.answer("\n Напиши пока что хочешь в подарок:")
-    router.message.register(save_gift_message, user_id=user_id)
+    router.message.register(save_gift_message)
 
 # Обработчик для сохранения сообщения о подарке
 async def save_gift_message(message: Message):
@@ -74,32 +74,66 @@ async def save_gift_message(message: Message):
     conn.commit()
     await message.reply("Сообщение о подарке сохранено!")
 
-# Обработчик для "Бросить снежок"
-@router.message(F.text.in_([LEXICON_RU['snowball']]))
-async def throw_snowball(message: Message):
+# Обработчик для отображения подарков
+@router.message(F.text.in_([LEXICON_RU['gifts']]))
+async def show_gifts(message: Message):
     user_id = message.from_user.id
-    cursor.execute("SELECT id FROM users WHERE user_id != ?", (user_id,))
-    ids = [row[0] for row in cursor.fetchall()]
-    
-    if ids:
-        await message.answer("Укажи ID пользователя, в которого хочешь бросить снежок:")
-        router.message.register(handle_snowball_throw, ids=ids)
+    cursor.execute("SELECT gift_message, santa_for FROM users WHERE user_id = ?", (user_id,))
+    gift_message, santa_for_id = cursor.fetchone()
 
-async def handle_snowball_throw(message: Message, ids):
-    try:
-        target_id = int(message.text)
-        if target_id in ids:
-            cursor.execute("UPDATE users SET snowball_hits = snowball_hits + 1 WHERE id = ?", (target_id,))
-            cursor.execute("SELECT throwers FROM users WHERE id = ?", (target_id,))
-            throwers = cursor.fetchone()[0]
-            throwers = f"{throwers}, {message.from_user.username}" if throwers else message.from_user.username
-            cursor.execute("UPDATE users SET throwers = ? WHERE id = ?", (throwers, target_id))
-            conn.commit()
-            await message.reply("Снежок брошен!")
+    # Проверка наличия данных
+    if not gift_message:
+        gift_message = "Вы еще не указали, что хотите получить в подарок."
+
+    if santa_for_id:
+        cursor.execute("SELECT username, gift_message FROM users WHERE id = ?", (santa_for_id,))
+        gift_for_user = cursor.fetchone()
+        if gift_for_user:
+            recipient_username, recipient_gift_message = gift_for_user
+            recipient_gift_message = recipient_gift_message or "не указал, что хочет получить в подарок."
+            await message.answer(
+                f"Привет, {message.from_user.full_name}!\n\n"
+                f"Вы хотите получить: {gift_message}\n\n"
+                f"Вы дарите подарок для @{recipient_username}, и он(а) хочет: {recipient_gift_message}"
+            )
         else:
-            await message.reply("Некорректный ID. Попробуй еще раз.")
-    except ValueError:
-        await message.reply(f"{message.from_user.full_name}, пожалуйста, укажи число.")
+            await message.answer(f"Не удалось найти пользователя, которому вы дарите подарок.")
+    else:
+        await message.answer("Вы еще не были назначены тайным дедом для кого-либо.")
+
+# Обработчик для кнопки "Как бросить снежок?"
+@router.message(F.text.in_([LEXICON_RU['how_snowball']]))
+async def how_snowball(message: Message):
+    await message.answer(text=LEXICON_RU['snow'])
+
+# Обработчик команды "Бросить снежок"
+@router.message(lambda message: message.text.lower().startswith("бросить снежок в"))
+async def throw_snowball(message: Message):
+    # Извлекаем ID или username цели из сообщения
+    parts = message.text.split(maxsplit=3)
+    if len(parts) < 4:
+        await message.reply("Пожалуйста, укажите ID или username цели после 'бросить снежок в'.")
+        return
+    
+    target = parts[3]  # ID или username цели
+    user_id = message.from_user.id
+
+    # Проверяем, существует ли пользователь с таким ID или username
+    cursor.execute("SELECT id, username FROM users WHERE id = ? OR username = ?", (target, target))
+    result = cursor.fetchone()
+    
+    if result:
+        target_id, target_username = result
+        # Увеличиваем счетчик попаданий и обновляем список бросавших
+        cursor.execute("UPDATE users SET snowball_hits = snowball_hits + 1 WHERE id = ?", (target_id,))
+        cursor.execute("SELECT throwers FROM users WHERE id = ?", (target_id,))
+        throwers = cursor.fetchone()[0] or ""
+        throwers = f"{throwers}, {message.from_user.username}" if throwers else message.from_user.username
+        cursor.execute("UPDATE users SET throwers = ? WHERE id = ?", (throwers, target_id))
+        conn.commit()
+        await message.reply(f"Снежок брошен в @{target_username}, {message.from_user.full_name}!")
+    else:
+        await message.reply("Пользователь не найден. Укажите корректный ID или username.")
 
 # Обработчик для "В меня попали"
 @router.message(F.text.in_([LEXICON_RU['hit']]))
@@ -107,4 +141,9 @@ async def show_hits(message: Message):
     user_id = message.from_user.id
     cursor.execute("SELECT snowball_hits, throwers FROM users WHERE user_id = ?", (user_id,))
     hits, throwers = cursor.fetchone()
-    await message.answer(f"{message.from_user.full_name}, в тебя попали {hits} раз(а). Бросали снежки: {throwers or 'никто не бросал'}.")
+    throwers_list = throwers.split(", ") if throwers else []
+    throwers_text = "\n".join([f"@{thrower}" for thrower in throwers_list]) if throwers_list else "никто не бросал"
+    await message.answer(
+        f"{message.from_user.full_name}, в вас попали {hits} раз(а).\n"
+        f"Бросали снежки:\n{throwers_text}"
+    )
