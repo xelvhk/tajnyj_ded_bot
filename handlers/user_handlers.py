@@ -16,14 +16,21 @@ cursor = conn.cursor()
 # Этот хэндлер срабатывает на команду /start
 @router.message(CommandStart())
 async def process_start_command(message: Message):
-    start_record()
     user_id = message.from_user.id
     username = message.from_user.username or message.from_user.full_name
-    cursor.execute("INSERT OR IGNORE INTO users (user_id, username) VALUES (?, ?)", (user_id, username))
-    conn.commit()
-    await message.answer(text=LEXICON_RU['/start'],
-                         reply_markup=yaded_kb)
-    await message.answer(f"Здравствуй, {message.from_user.full_name}! ты участвуешь в Тайном Санте! Вот только у нас не Санта, а Дед! Дед Мороз! Жди, пока подойдут остальные коллеги")
+    start_record()
+    # Добавляем пользователя в базу, если его там нет
+    cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
+    if cursor.fetchone() is None:
+        cursor.execute("INSERT INTO users (user_id, username) VALUES (?, ?)", (user_id, username))
+        conn.commit()
+        await message.reply(
+            f"Привет, {username}! \n \nЗа окном идёт снег, а у календаря остался последний листок? Значит скоро новый год... \n \nПришло время стать тайным дедом \nНапиши, что хочешь получить в подарок🧚‍♀️ Стоимость подарка до 1000 рублей.  \nЕсли не знаешь - напиши 'Хочу сюрприз' \nЭТО ОБЯЗАТЕЛЬНО!", 
+            reply_markup=yaded_kb
+        )
+    else:
+        await message.reply("Вы уже зарегистрированы. Напишите, что вы хотите получить в подарок.", reply_markup=yaded_kb)
+
 
 
 # Этот хэндлер срабатывает на команду /help
@@ -32,118 +39,136 @@ async def process_help_command(message: Message):
     await message.answer(text=LEXICON_RU['/help'])
 
 # Обработчик для "Стать тайным дедом"
+@router.message(lambda message: message.text != LEXICON_RU['gifts'] and message.text != LEXICON_RU['yaded'])
+async def save_gift(message: Message):
+    user_id = message.from_user.id
+    gift = message.text
+
+    # Сохраняем подарок
+    cursor.execute("UPDATE users SET gift = ? WHERE user_id = ?", (gift, user_id))
+    conn.commit()
+    await message.reply("Твой подарок сохранен! Теперь можно нажать на кнопку 'Стать тайным дедом' и стать тайным дедом")
+
+    # Проверяем, набралось ли 14 участников
+    cursor.execute("SELECT COUNT(*) FROM users WHERE gift IS NOT NULL")
+    user_count = cursor.fetchone()[0]
+
+    if user_count == 2:
+        await distribute_santas()
+
 @router.message(F.text.in_([LEXICON_RU['yaded']]))
 async def become_santa(message: Message):
-    cursor.execute("SELECT COUNT(*) FROM users")
-    count = cursor.fetchone()[0]
     user_id = message.from_user.id
 
-    if count < 14:
-        await message.reply(f"{message.from_user.full_name}, пожалуйста, подожди, пока наберется 14 участников.")
-        return
+    # Проверяем, набралось ли 14 участников
+    cursor.execute("SELECT COUNT(*) FROM users WHERE gift IS NOT NULL")
+    user_count = cursor.fetchone()[0]
 
-    cursor.execute("SELECT santa_for FROM users WHERE user_id = ?", (user_id,))
-    santa_for = cursor.fetchone()[0]
-    if santa_for is not None:
-        cursor.execute("SELECT username FROM users WHERE id = ?", (santa_for,))
-        gift_for = cursor.fetchone()[0]
-        await message.answer(f"{message.from_user.full_name},ты тайный Санта для @{gift_for}!")
+    if user_count < 2:
+        await message.reply(f"По айпи тебя вычислили, подожди, сейчас только {user_count} человек подключилось, скоро выберем кому подаришь 🎁. Попробуй нажать ещё раз чуть позже")
     else:
-        cursor.execute("SELECT user_id FROM users WHERE santa_for IS NULL")
-        user_ids = [row[0] for row in cursor.fetchall()]
-        random.shuffle(user_ids)
-
-        for i, user in enumerate(user_ids):
-            santa_for = user_ids[(i + 1) % len(user_ids)]
-            cursor.execute("UPDATE users SET santa_for = ? WHERE user_id = ?", (santa_for, user))
-        conn.commit()
+        # Показываем, кому пользователь дарит
         cursor.execute("SELECT santa_for FROM users WHERE user_id = ?", (user_id,))
         santa_for_id = cursor.fetchone()[0]
-        cursor.execute("SELECT username FROM users WHERE user_id = ?", (santa_for_id,))
-        gift_for = cursor.fetchone()[0]
-        
-        await message.answer(f"{message.from_user.full_name}, ты теперь тайный Санта для @{gift_for}!")
-    await message.answer("\n Напиши пока что хочешь в подарок:")
-    router.message.register(save_gift_message)
 
-# Обработчик для сохранения сообщения о подарке
-async def save_gift_message(message: Message):
-    user_id = message.from_user.id
-    gift_message = message.text
-    cursor.execute("UPDATE users SET gift_message = ? WHERE user_id = ?", (gift_message, user_id))
-    conn.commit()
-    await message.reply("Сообщение о подарке сохранено!")
-
-# Обработчик для отображения подарков
-@router.message(F.text.in_([LEXICON_RU['gifts']]))
-async def show_gifts(message: Message):
-    user_id = message.from_user.id
-    cursor.execute("SELECT gift_message, santa_for FROM users WHERE user_id = ?", (user_id,))
-    gift_message, santa_for_id = cursor.fetchone()
-
-    # Проверка наличия данных
-    if not gift_message:
-        gift_message = "Вы еще не указали, что хотите получить в подарок."
-
-    if santa_for_id:
-        cursor.execute("SELECT username, gift_message FROM users WHERE id = ?", (santa_for_id,))
-        gift_for_user = cursor.fetchone()
-        if gift_for_user:
-            recipient_username, recipient_gift_message = gift_for_user
-            recipient_gift_message = recipient_gift_message or "не указал, что хочет получить в подарок."
-            await message.answer(
-                f"Привет, {message.from_user.full_name}!\n\n"
-                f"Вы хотите получить: {gift_message}\n\n"
-                f"Вы дарите подарок для @{recipient_username}, и он(а) хочет: {recipient_gift_message}"
-            )
+        if santa_for_id:
+            cursor.execute("SELECT username, gift FROM users WHERE user_id = ?", (santa_for_id,))
+            recipient_username, recipient_gift = cursor.fetchone()
+            await message.answer(f"Пришло время дарить подарок @{recipient_username}. Этот человек хочет: {recipient_gift}")
         else:
-            await message.answer(f"Не удалось найти пользователя, которому вы дарите подарок.")
-    else:
-        await message.answer("Вы еще не были назначены тайным дедом для кого-либо.")
+            await message.answer("Произошла ошибка. Попробуйте позже.")
 
-# Обработчик для кнопки "Как бросить снежок?"
-@router.message(F.text.in_([LEXICON_RU['how_snowball']]))
-async def how_snowball(message: Message):
-    await message.answer(text=LEXICON_RU['snow'])
+@router.message(F.text.in_([LEXICON_RU['gifts']]))
+async def check_gifts(message: Message):
+    user_id = message.from_user.id
 
-# Обработчик команды "Бросить снежок"
-@router.message(lambda message: message.text.lower().startswith("бросить снежок в"))
-async def throw_snowball(message: Message):
-    # Извлекаем ID или username цели из сообщения
-    parts = message.text.split(maxsplit=3)
-    if len(parts) < 4:
-        await message.reply("Пожалуйста, укажите ID или username цели после 'бросить снежок в'.")
+    # Получаем свой подарок
+    cursor.execute("SELECT gift FROM users WHERE user_id = ?", (user_id,))
+    my_gift = cursor.fetchone()
+
+    if not my_gift or not my_gift[0]:
+        await message.answer("Вы еще не указали, что хотите получить.")
         return
-    
-    target = parts[3]  # ID или username цели
-    user_id = message.from_user.id
 
-    # Проверяем, существует ли пользователь с таким ID или username
-    cursor.execute("SELECT id, username FROM users WHERE id = ? OR username = ?", (target, target))
-    result = cursor.fetchone()
-    
-    if result:
-        target_id, target_username = result
-        # Увеличиваем счетчик попаданий и обновляем список бросавших
-        cursor.execute("UPDATE users SET snowball_hits = snowball_hits + 1 WHERE id = ?", (target_id,))
-        cursor.execute("SELECT throwers FROM users WHERE id = ?", (target_id,))
-        throwers = cursor.fetchone()[0] or ""
-        throwers = f"{throwers}, {message.from_user.username}" if throwers else message.from_user.username
-        cursor.execute("UPDATE users SET throwers = ? WHERE id = ?", (throwers, target_id))
-        conn.commit()
-        await message.reply(f"Снежок брошен в @{target_username}, {message.from_user.full_name}!")
+    my_gift = my_gift[0]
+
+    # Проверяем, есть ли назначенный получатель
+    cursor.execute("SELECT santa_for FROM users WHERE user_id = ?", (user_id,))
+    santa_for_id = cursor.fetchone()[0]
+
+    if not santa_for_id:
+        await message.answer(f"Ваш подарок: {my_gift}\nРаспределение еще не завершено, ожидаем всех участников.")
     else:
-        await message.reply("Пользователь не найден. Укажите корректный ID или username.")
+        cursor.execute("SELECT username, gift FROM users WHERE user_id = ?", (santa_for_id,))
+        recipient_username, recipient_gift = cursor.fetchone()
+        await message.answer(
+            f"Ваш подарок: {my_gift}\nВы дарите подарок @{recipient_username}. Этот человек хочет: {recipient_gift}"
+        )
 
-# Обработчик для "В меня попали"
-@router.message(F.text.in_([LEXICON_RU['hit']]))
-async def show_hits(message: Message):
-    user_id = message.from_user.id
-    cursor.execute("SELECT snowball_hits, throwers FROM users WHERE user_id = ?", (user_id,))
-    hits, throwers = cursor.fetchone()
-    throwers_list = throwers.split(", ") if throwers else []
-    throwers_text = "\n".join([f"@{thrower}" for thrower in throwers_list]) if throwers_list else "никто не бросал"
-    await message.answer(
-        f"{message.from_user.full_name}, в вас попали {hits} раз(а).\n"
-        f"Бросали снежки:\n{throwers_text}"
-    )
+async def distribute_santas():
+    # Получаем всех пользователей, которые указали подарки
+    cursor.execute("SELECT user_id FROM users WHERE gift IS NOT NULL")
+    user_ids = [row[0] for row in cursor.fetchall()]
+    random.shuffle(user_ids)
+
+    # Назначаем каждому получателя
+    for i in range(len(user_ids)):
+        santa_id = user_ids[i]
+        recipient_id = user_ids[(i + 1) % len(user_ids)]
+        cursor.execute("UPDATE users SET santa_for = ? WHERE user_id = ?", (recipient_id, santa_id))
+
+    conn.commit()
+
+    # Уведомляем всех участников
+    for santa_id in user_ids:
+        cursor.execute("SELECT gift, username FROM users WHERE user_id = (SELECT santa_for FROM users WHERE user_id = ?)", (santa_id,))
+        gift, recipient_username = cursor.fetchone()
+        await bot.send_message(santa_id, f"Вы стали тайным дедом для @{recipient_username}! Этот человек хочет: {gift}")
+
+
+# # Обработчик для кнопки "Как бросить снежок?"
+# @router.message(F.text.in_([LEXICON_RU['how_snowball']]))
+# async def how_snowball(message: Message):
+#     await message.answer(text=LEXICON_RU['snow'])
+
+# # Обработчик команды "Бросить снежок"
+# @router.message(lambda message: message.text.lower().startswith("бросить снежок в"))
+# async def throw_snowball(message: Message):
+#     # Извлекаем ID или username цели из сообщения
+#     parts = message.text.split(maxsplit=3)
+#     if len(parts) < 4:
+#         await message.reply("Пожалуйста, укажите ID или username цели после 'бросить снежок в'.")
+#         return
+    
+#     target = parts[3]  # ID или username цели
+#     user_id = message.from_user.id
+
+#     # Проверяем, существует ли пользователь с таким ID или username
+#     cursor.execute("SELECT id, username FROM users WHERE id = ? OR username = ?", (target, target))
+#     result = cursor.fetchone()
+    
+#     if result:
+#         target_id, target_username = result
+#         # Увеличиваем счетчик попаданий и обновляем список бросавших
+#         cursor.execute("UPDATE users SET snowball_hits = snowball_hits + 1 WHERE id = ?", (target_id,))
+#         cursor.execute("SELECT throwers FROM users WHERE id = ?", (target_id,))
+#         throwers = cursor.fetchone()[0] or ""
+#         throwers = f"{throwers}, {message.from_user.username}" if throwers else message.from_user.username
+#         cursor.execute("UPDATE users SET throwers = ? WHERE id = ?", (throwers, target_id))
+#         conn.commit()
+#         await message.reply(f"Снежок брошен в @{target_username}, {message.from_user.full_name}!")
+#     else:
+#         await message.reply("Пользователь не найден. Укажите корректный ID или username.")
+
+# # Обработчик для "В меня попали"
+# @router.message(F.text.in_([LEXICON_RU['hit']]))
+# async def show_hits(message: Message):
+#     user_id = message.from_user.id
+#     cursor.execute("SELECT snowball_hits, throwers FROM users WHERE user_id = ?", (user_id,))
+#     hits, throwers = cursor.fetchone()
+#     throwers_list = throwers.split(", ") if throwers else []
+#     throwers_text = "\n".join([f"@{thrower}" for thrower in throwers_list]) if throwers_list else "никто не бросал"
+#     await message.answer(
+#         f"{message.from_user.full_name}, в вас попали {hits} раз(а).\n"
+#         f"Бросали снежки:\n{throwers_text}"
+#     )

@@ -11,9 +11,7 @@ def start_record():
         user_id INTEGER UNIQUE,
         username TEXT,
         santa_for INTEGER,
-        gift_message TEXT,
-        snowball_hits INTEGER DEFAULT 0,
-        throwers TEXT DEFAULT ''
+        gift TEXT
         )
     ''')
     conn.commit()
