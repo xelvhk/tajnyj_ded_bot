@@ -29,7 +29,7 @@ async def process_start_command(message: Message):
             reply_markup=yaded_kb
         )
     else:
-        await message.reply("Вы уже зарегистрированы. Напишите, что вы хотите получить в подарок.", reply_markup=yaded_kb)
+        await message.reply("Ты уже зарегистрирован. Напиши, что хочешь получить в подарок.", reply_markup=yaded_kb)
 
 
 
@@ -53,7 +53,7 @@ async def save_gift(message: Message):
     cursor.execute("SELECT COUNT(*) FROM users WHERE gift IS NOT NULL")
     user_count = cursor.fetchone()[0]
 
-    if user_count == 2:
+    if user_count == 14:
         await distribute_santas()
 
 @router.message(F.text.in_([LEXICON_RU['yaded']]))
@@ -64,7 +64,7 @@ async def become_santa(message: Message):
     cursor.execute("SELECT COUNT(*) FROM users WHERE gift IS NOT NULL")
     user_count = cursor.fetchone()[0]
 
-    if user_count < 2:
+    if user_count < 14:
         await message.reply(f"По айпи тебя вычислили, подожди, сейчас только {user_count} человек подключилось, скоро выберем кому подаришь 🎁. Попробуй нажать ещё раз чуть позже")
     else:
         # Показываем, кому пользователь дарит
@@ -87,7 +87,7 @@ async def check_gifts(message: Message):
     my_gift = cursor.fetchone()
 
     if not my_gift or not my_gift[0]:
-        await message.answer("Вы еще не указали, что хотите получить.")
+        await message.answer("Ты еще не указал, что хочешь получить.")
         return
 
     my_gift = my_gift[0]
@@ -97,12 +97,12 @@ async def check_gifts(message: Message):
     santa_for_id = cursor.fetchone()[0]
 
     if not santa_for_id:
-        await message.answer(f"Ваш подарок: {my_gift}\nРаспределение еще не завершено, ожидаем всех участников.")
+        await message.answer(f"Твой подарок: {my_gift}\nРаспределение еще не завершено, ожидаем всех участников.")
     else:
         cursor.execute("SELECT username, gift FROM users WHERE user_id = ?", (santa_for_id,))
         recipient_username, recipient_gift = cursor.fetchone()
         await message.answer(
-            f"Ваш подарок: {my_gift}\nВы дарите подарок @{recipient_username}. Этот человек хочет: {recipient_gift}"
+            f"Твой подарок: {my_gift}\nТы даришь подарок @{recipient_username}. Этот человек хочет: {recipient_gift}"
         )
 
 async def distribute_santas():
@@ -123,7 +123,7 @@ async def distribute_santas():
     for santa_id in user_ids:
         cursor.execute("SELECT gift, username FROM users WHERE user_id = (SELECT santa_for FROM users WHERE user_id = ?)", (santa_id,))
         gift, recipient_username = cursor.fetchone()
-        await bot.send_message(santa_id, f"Вы стали тайным дедом для @{recipient_username}! Этот человек хочет: {gift}")
+        await bot.send_message(santa_id, f"Ты стал тайным дедом для @{recipient_username}! Этот человек хочет: {gift}")
 
 
 # # Обработчик для кнопки "Как бросить снежок?"
