@@ -49,22 +49,22 @@ async def save_gift(message: Message):
     conn.commit()
     await message.reply("Твой подарок сохранен! Теперь можно нажать на кнопку 'Стать тайным дедом' и стать тайным дедом")
 
-    # Проверяем, набралось ли 14 участников
+    # Проверяем, набралось ли 13 участников
     cursor.execute("SELECT COUNT(*) FROM users WHERE gift IS NOT NULL")
     user_count = cursor.fetchone()[0]
 
-    if user_count == 14:
+    if user_count == 13:
         await distribute_santas()
 
 @router.message(F.text.in_([LEXICON_RU['yaded']]))
 async def become_santa(message: Message):
     user_id = message.from_user.id
 
-    # Проверяем, набралось ли 14 участников
+    # Проверяем, набралось ли 13 участников
     cursor.execute("SELECT COUNT(*) FROM users WHERE gift IS NOT NULL")
     user_count = cursor.fetchone()[0]
 
-    if user_count < 14:
+    if user_count < 13:
         await message.reply(f"По айпи тебя вычислили, подожди, сейчас только {user_count} человек подключилось, скоро выберем кому подаришь 🎁. Попробуй нажать ещё раз чуть позже")
     else:
         # Показываем, кому пользователь дарит
