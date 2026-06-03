@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Compile Python modules
+        run: python -m compileall config_data handlers keyboards lexicon services main.py
+
+      - name: Import bot modules
+        run: |
+          python - <<'PY'
+          import config_data.config
+          import handlers.other_handlers
+          import handlers.user_handlers
+          import keyboards.keyboards
+          import lexicon.lexicon_ru
+          import services.services
+          PY
+        env:
+          BOT_TOKEN: test-token

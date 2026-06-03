@@ -1,5 +1,9 @@
 # tajnyj_ded_bot
 
+[![CI](https://github.com/xelvhk/tajnyj_ded_bot/actions/workflows/ci.yml/badge.svg)](https://github.com/xelvhk/tajnyj_ded_bot/actions/workflows/ci.yml)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPLv3-blue.svg)](LICENSE)
+[![Last commit](https://img.shields.io/github/last-commit/xelvhk/tajnyj_ded_bot)](https://github.com/xelvhk/tajnyj_ded_bot/commits/main)
+
 Telegram-бот для «Тайного Санты»: управление участниками, случайное распределение и приватная выдача пар.
 
 Язык: [English](README.md) | **Русский**
@@ -28,8 +32,10 @@ python main.py
 ## Архитектура
 - `handlers/*`: обработчики команд и состояний.
 - `services/*`: бизнес-логика участников и распределения.
-- `database/*` или локальное хранилище: состояние событий и участников.
-- `config/*`: переменные окружения и runtime-настройки.
+- `data/santas.db`: локальная SQLite-база, создается во время работы.
+- `config_data/*`: переменные окружения и runtime-настройки.
+- `keyboards/*`: reply-клавиатуры.
+- `lexicon/*`: русские сообщения бота.
 
 ## Demo
 - Добавить скриншоты/GIF:
@@ -37,14 +43,22 @@ python main.py
   - вступление участников
   - приватная выдача пары
 
+## Ограничения
+- Сейчас бот использует локальную SQLite-базу, поэтому при деплое нужно сохранять директорию `data/`.
+- Распределение запускается после фиксированного числа участников.
+- Пока нет admin dry-run preview перед финальной жеребьевкой.
+
 ## Roadmap
 - [ ] Добавить ограничения распределения (исключение прошлогодних пар, optional blacklist).
 - [ ] Добавить admin-команды со статистикой и dry-run preview.
 - [ ] Добавить экспорт/импорт бэкапа состояния события.
+- [ ] Добавить smoke-тесты для логики распределения.
 
 ## Статус
 Active development
 
+## Changelog
+См. [CHANGELOG.md](CHANGELOG.md).
+
 ## Лицензия
 GNU AGPLv3. См. [LICENSE](LICENSE).
-
