@@ -37,3 +37,6 @@ jobs:
           PY
         env:
           BOT_TOKEN: test-token
+
+      - name: Run service tests
+        run: python -m unittest discover -s tests -v

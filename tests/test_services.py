@@ -34,3 +34,17 @@ class EventTests(unittest.TestCase):
         services.save_gift(1, 'gift')
         self.assertEqual(services.draw(), [])
         self.assertEqual(services.status(), (1, 1, 0))
+
+    def test_new_game_archives_assignments_and_allows_registration(self):
+        for user_id in (1, 2):
+            services.register(user_id, str(user_id))
+            services.save_gift(user_id, 'gift')
+        services.draw()
+        self.assertFalse(services.save_gift(1, 'changed'))
+        backup = services.new_game()
+        self.assertTrue(backup.exists())
+        self.assertEqual(services.status(), (0, 0, 0))
+        self.assertEqual(services.register(3, 'new'), 'registered')
+        import sqlite3
+        with sqlite3.connect(backup) as conn:
+            self.assertEqual(conn.execute('SELECT COUNT(santa_for) FROM users').fetchone()[0], 2)

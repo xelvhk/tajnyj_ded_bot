@@ -26,6 +26,7 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
+# Set BOT_TOKEN and comma-separated numeric ADMIN_IDS in .env
 python main.py
 ```
 
@@ -43,16 +44,22 @@ python main.py
   - participant join flow
   - private assignment delivery
 
-## Known Limitations
-- The bot currently uses local SQLite storage, so deployment should preserve the `data/` directory.
-- Matching starts after a fixed participant threshold in the current implementation.
-- There is no admin dry-run preview yet.
+## Administration
+Set numeric Telegram admin IDs in `ADMIN_IDS`. Admin commands work in private chat:
+- `/admin` shows statistics and commands.
+- `/draw` previews participants and readiness; `/confirm_draw` assigns recipients to users with wishes (at least two).
+- `/renotify` sends assignment reminders again.
+- `/new_game` previews the reset; `/confirm_new_game` archives the current database in `data/archive/` and starts a new game. Preserve the whole `data/` directory on deployment.
+
+Once matching is complete, registration and wish edits are closed. Participants without a wish are excluded. Confirm commands can be entered directly; there is no extra confirmation token.
+
+Run service tests: `python -m unittest discover -s tests -v`.
 
 ## Roadmap
 - [ ] Add matching constraints (avoid previous-year pairs, optional blacklist).
-- [ ] Add admin commands for stats and dry-run preview.
-- [ ] Add backup export/import for event state.
-- [ ] Add smoke tests for matching logic.
+- [ ] Add archive export/import.
+- [x] Add admin commands and matching preview.
+- [x] Add basic matching tests.
 
 ## Status
 Active development
