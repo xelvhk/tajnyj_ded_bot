@@ -4,6 +4,7 @@ import logging
 from aiogram import Bot, Dispatcher
 from config_data.config import Config, load_config
 from handlers import other_handlers, user_handlers
+from services.services import start_record
 
 
 # Инициализируем логгер
@@ -24,6 +25,8 @@ async def main():
     # Загружаем конфиг в переменную config
     config: Config = load_config()
 
+    start_record()
+
     # Инициализируем бот и диспетчер
     bot = Bot(token=config.tg_bot.token)
     dp = Dispatcher()
@@ -33,8 +36,9 @@ async def main():
     dp.include_router(other_handlers.router)
 
     # Пропускаем накопившиеся апдейты и запускаем polling
-    await bot.delete_webhook(drop_pending_updates=True)
+    await bot.delete_webhook(drop_pending_updates=False)
     await dp.start_polling(bot)
 
 
-asyncio.run(main())
+if __name__ == '__main__':
+    asyncio.run(main())
