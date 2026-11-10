@@ -47,11 +47,11 @@ python main.py
 ## Administration
 Set numeric Telegram admin IDs in `ADMIN_IDS`. Admin commands work in private chat:
 - `/admin` shows statistics and commands.
-- `/draw` previews participants and readiness; `/confirm_draw` assigns recipients to users with wishes (at least two).
-- `/renotify` sends assignment reminders again.
-- `/new_game` previews the reset; `/confirm_new_game` archives the current database in `data/archive/` and starts a new game. Preserve the whole `data/` directory on deployment.
+- `/draw` previews participants and returns `/confirm_draw <code>` to assign recipients to users with wishes (at least two).
+- `/renotify` retries only undelivered reminders.
+- `/new_game` returns `/confirm_new_game <code>` to archive the current database in `data/archive/` and start a new game. Preserve the whole `data/` directory on deployment.
 
-Once matching is complete, registration and wish edits are closed. Participants without a wish are excluded. Confirm commands can be entered directly; there is no extra confirmation token.
+Once matching is complete, registration and wish edits are closed. Participants without a wish are excluded. Confirmation codes expire after ten minutes or when the roster or wishes change.
 
 Run service tests: `python -m unittest discover -s tests -v`.
 

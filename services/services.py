@@ -1,5 +1,7 @@
 """Persistent state for a single Secret Santa event."""
 import secrets
+import hashlib
+import time
 from datetime import datetime, timezone
 import sqlite3
 from contextlib import contextmanager
@@ -24,6 +26,34 @@ def start_record():
         conn.execute('''CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY, user_id INTEGER UNIQUE, username TEXT,
             santa_for INTEGER, gift TEXT)''')
+        columns = {row[1] for row in conn.execute('PRAGMA table_info(users)')}
+        if 'notification_pending' not in columns:
+            conn.execute('ALTER TABLE users ADD COLUMN notification_pending INTEGER NOT NULL DEFAULT 0')
+        conn.execute('''CREATE TABLE IF NOT EXISTS confirmations (
+            admin_id INTEGER, action TEXT, token TEXT, snapshot TEXT,
+            expires_at INTEGER, PRIMARY KEY (admin_id, action))''')
+
+
+def snapshot(conn):
+    rows = conn.execute('SELECT user_id, username, gift, santa_for FROM users ORDER BY user_id').fetchall()
+    return hashlib.sha256(repr(rows).encode()).hexdigest()
+
+
+def preview(admin_id, action):
+    with connect() as conn:
+        token = secrets.token_urlsafe(8)
+        conn.execute('''INSERT OR REPLACE INTO confirmations VALUES (?, ?, ?, ?, ?)''',
+                     (admin_id, action, token, snapshot(conn), int(time.time()) + 600))
+        return token
+
+
+def consume_confirmation(conn, admin_id, action, token):
+    row = conn.execute('SELECT token, snapshot, expires_at FROM confirmations WHERE admin_id=? AND action=?',
+                       (admin_id, action)).fetchone()
+    if not row or row[0] != token or row[1] != snapshot(conn) or row[2] < time.time():
+        return False
+    conn.execute('DELETE FROM confirmations WHERE admin_id=? AND action=?', (admin_id, action))
+    return True
 
 
 def register(user_id, name):
@@ -56,9 +86,11 @@ def assignment(user_id):
             LEFT JOIN users r ON r.user_id = u.santa_for WHERE u.user_id=?''', (user_id,)).fetchone()
 
 
-def draw():
+def draw(admin_id, token):
     with connect() as conn:
         conn.execute('BEGIN IMMEDIATE')
+        if not consume_confirmation(conn, admin_id, 'draw', token):
+            return []
         if conn.execute('SELECT 1 FROM users WHERE santa_for IS NOT NULL').fetchone():
             return []
         ids = [row[0] for row in conn.execute('SELECT user_id FROM users WHERE gift IS NOT NULL')]
@@ -67,18 +99,26 @@ def draw():
         secrets.SystemRandom().shuffle(ids)
         conn.executemany('UPDATE users SET santa_for=? WHERE user_id=?',
                          [(ids[(i + 1) % len(ids)], user_id) for i, user_id in enumerate(ids)])
+        conn.execute('UPDATE users SET notification_pending=1 WHERE santa_for IS NOT NULL')
         return ids
 
 
 def assigned_ids():
     with connect() as conn:
-        return [row[0] for row in conn.execute('SELECT user_id FROM users WHERE santa_for IS NOT NULL')]
+        return [row[0] for row in conn.execute('SELECT user_id FROM users WHERE notification_pending=1')]
 
 
-def new_game():
+def mark_notified(user_id):
+    with connect() as conn:
+        conn.execute('UPDATE users SET notification_pending=0 WHERE user_id=?', (user_id,))
+
+
+def new_game(admin_id, token):
     """Archive the current event database and clear it for a new event."""
     with connect() as conn:
         conn.execute('BEGIN IMMEDIATE')
+        if not consume_confirmation(conn, admin_id, 'new_game', token):
+            return None
         count = conn.execute('SELECT COUNT(*) FROM users').fetchone()[0]
         if not count:
             return None
@@ -93,6 +133,7 @@ def new_game():
                 conn.backup(backup)
             conn.execute('BEGIN IMMEDIATE')
             conn.execute('DELETE FROM users')
+            conn.execute('DELETE FROM confirmations')
         except Exception:
             backup_path.unlink(missing_ok=True)
             raise

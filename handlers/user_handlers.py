@@ -62,21 +62,24 @@ async def admin_draw(message: Message):
     preview = '\n'.join(lines)
     if len(preview) > 3500:
         preview = preview[:3500] + '\n…'
-    await message.answer(f'Готовы: {ready} из {total}. Без пожелания: {total - ready}.\n{preview}\nДля окончательного запуска введи /confirm_draw.')
+    token = services.preview(message.from_user.id, 'draw')
+    await message.answer(f'Готовы: {ready} из {total}. Без пожелания: {total - ready}.\n{preview}\nДля запуска в течение 10 минут: /confirm_draw {token}')
 
 
 @router.message(Command('confirm_draw'))
 async def confirm_draw(message: Message):
     if not private(message) or message.from_user.id not in admin_ids():
         return
-    ids = services.draw()
+    token = message.text.partition(' ')[2].strip()
+    ids = services.draw(message.from_user.id, token)
     if not ids:
-        await message.answer('Жеребьёвка уже проведена или готовых участников меньше двух.')
+        await message.answer('Подтверждение недействительно или состав участников изменился. Повтори /draw.')
         return
     failed = 0
     for user_id in ids:
         try:
             await message.bot.send_message(user_id, 'Жеребьёвка проведена! Нажми «Стать тайным дедом», чтобы узнать получателя.')
+            services.mark_notified(user_id)
         except Exception:
             failed += 1
             logger.exception('Failed to notify participant %s', user_id)
@@ -89,12 +92,13 @@ async def renotify(message: Message):
         return
     ids = services.assigned_ids()
     if not ids:
-        await message.answer('Назначений пока нет.')
+        await message.answer('Нет участников с ошибкой доставки.')
         return
     failed = 0
     for user_id in ids:
         try:
             await message.bot.send_message(user_id, 'Твоё назначение доступно по кнопке «Стать тайным дедом».')
+            services.mark_notified(user_id)
         except Exception:
             failed += 1
             logger.exception('Failed to notify participant %s', user_id)
@@ -106,16 +110,21 @@ async def preview_new_game(message: Message):
     if not private(message) or message.from_user.id not in admin_ids():
         return
     total, ready, assigned = services.status()
-    await message.answer(f'Текущая игра: {total} участников, {assigned} назначений. /confirm_new_game сохранит архив базы и очистит список для новой игры.')
+    if not total:
+        await message.answer('Список уже пуст.')
+        return
+    token = services.preview(message.from_user.id, 'new_game')
+    await message.answer(f'Текущая игра: {total} участников, {assigned} назначений. Для архивации и новой игры в течение 10 минут: /confirm_new_game {token}')
 
 
 @router.message(Command('confirm_new_game'))
 async def confirm_new_game(message: Message):
     if not private(message) or message.from_user.id not in admin_ids():
         return
-    path = services.new_game()
+    token = message.text.partition(' ')[2].strip()
+    path = services.new_game(message.from_user.id, token)
     if path is None:
-        await message.answer('Список уже пуст.')
+        await message.answer('Подтверждение недействительно или состав участников изменился. Повтори /new_game.')
     else:
         await message.answer(f'Новая игра создана. Архив: {path.name}')
 
